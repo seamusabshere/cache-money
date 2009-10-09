@@ -2,45 +2,118 @@ module Cash
   class Fake < HashWithIndifferentAccess
     attr_accessor :servers
 
-    def get_multi(*keys)
-      slice(*keys).collect { |k,v| [k, Marshal.load(v)] }.to_hash
+    class CacheEntry
+      attr_reader :value
+      
+      def self.default_ttl
+        1_000_000
+      end
+
+      def self.now
+        Time.now
+      end
+      
+      def initialize(value, raw, ttl)
+        if raw
+          @value = value.to_s
+        else
+          @value = Marshal.dump(value)
+        end
+        
+        if ttl.zero?
+          @ttl = self.class.default_ttl
+        else
+          @ttl = ttl
+        end
+        
+        @expires_at = self.class.now + @ttl
+      end
+      
+      
+      def expired?
+        self.class.now > @expires_at
+      end
+      
+      def increment(amount = 1)
+        @value = (@value.to_i + amount).to_s
+      end
+      
+      def decrement(amount = 1)
+        @value = (@value.to_i - amount).to_s
+      end
+      
+      def unmarshal
+        Marshal.load(@value)
+      end
+      
+      def to_i
+        @value.to_i
+      end
+    end
+    
+    attr_accessor :logging
+    
+    def initialize
+      @logging = false
+    end
+    
+    def get_multi(keys)
+      slice(*keys).collect { |k,v| [k, v.unmarshal] }.to_hash_without_nils
     end
 
-    def set(key, value, ttl = 0, raw = false)
-      self[key] = marshal(value, raw)
+    def set(key, value, ttl = CacheEntry.default_ttl, raw = false)
+      log "< set #{key} #{ttl}"
+      self[key] = CacheEntry.new(value, raw, ttl)
+      log('> STORED')
     end
 
     def get(key, raw = false)
+      log "< get #{key}"
+      unless self.has_unexpired_key?(key)
+        log('> END')
+        return nil
+      end
+      
+      log("> sending key #{key}")
+      log('> END')
       if raw
-        self[key]
+        self[key].value
       else
-        if self.has_key?(key)
-          Marshal.load(self[key])
-        else
-          nil
-        end
+        self[key].unmarshal
+      end
+    end
+    
+    def delete(key, options = {})
+      log "< delete #{key}"
+      if self.has_unexpired_key?(key)
+        log "> DELETED"
+        super(key)
+      else
+        log "> NOT FOUND"
       end
     end
 
     def incr(key, amount = 1)
-      if self.has_key?(key)
-        self[key] = (self[key].to_i + amount).to_s
+      if self.has_unexpired_key?(key)
+        self[key].increment(amount)
         self[key].to_i
       end
     end
 
     def decr(key, amount = 1)
-      if self.has_key?(key)
-        self[key] = (self[key].to_i - amount).to_s
+      if self.has_unexpired_key?(key)
+        self[key].decrement(amount)
         self[key].to_i
       end
     end
 
-    def add(key, value, ttl = 0, raw = false)
-      return false if self.has_key?(key)
-
-      self[key] = marshal(value, raw)
-      true
+    def add(key, value, ttl = CacheEntry.default_ttl, raw = false)
+      if self.has_unexpired_key?(key)
+        "NOT_STORED\r\n"
+      else
+        set(key, value, ttl, raw)
+        "STORED\r\n"
+      end
     end
 
     def append(key, value)
@@ -52,6 +125,7 @@ module Cash
     end
 
     def flush_all
+      log('< flush_all')
       clear
     end
 
@@ -63,21 +137,18 @@ module Cash
       [0, Hash.new(0)]
     end
 
-    private
-    def marshal(value, raw)
-      if raw
-        value.to_s
-      else
-        Marshal.dump(value)
-      end
+    def has_unexpired_key?(key)
+      self.has_key?(key) && !self[key].expired?
     end
-
-    def unmarshal(marshaled_obj)
-      Marshal.load(marshaled_obj)
+    
+    def log(message)
+      return unless logging
+      logger.debug(message)
     end
-
-    def deep_clone(obj)
-      unmarshal(marshal(obj))
+    
+    def logger
+      @logger ||= ActiveSupport::BufferedLogger.new(Rails.root.join('log/cash_mock.log'))
     end
+    
   end
 end

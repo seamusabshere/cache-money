@@ -47,12 +47,21 @@ module Cash
         false
       end
 
+      def order_matters?
+        true
+      end
+
       private
       def cacheable?(*optionss)
         optionss.each { |options| return unless safe_options_for_cache?(options) }
         partial_indices = optionss.collect { |options| attribute_value_pairs_for_conditions(options[:conditions]) }
         return if partial_indices.include?(nil)
         attribute_value_pairs = partial_indices.sum.sort { |x, y| x[0] <=> y[0] }
+        
+        attribute_value_pairs.each do |attribute_value_pair|
+          return false if attribute_value_pair.last.is_a?(Array)
+        end
+        
         if index = indexed_on?(attribute_value_pairs.collect { |pair| pair[0] })
           if index.matches?(self)
             [attribute_value_pairs, index]
@@ -155,7 +164,7 @@ module Cash
 
       def find_from_keys(*missing_keys)
         missing_ids = Array(missing_keys).flatten.collect { |key| key.split('/')[2].to_i }
-        find_from_ids_without_cache(missing_ids, {})
+        find_from_ids_without_cache(missing_ids, @options1)
       end
     end
   end

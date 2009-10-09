@@ -17,7 +17,7 @@ module Cash
           hits = repository.get_multi(*keys)
           if (missed_keys = keys - hits.keys).any?
             missed_values = block.call(missed_keys)
-            hits.merge!(missed_keys.zip(Array(missed_values)).to_hash)
+            hits.merge!(missed_keys.zip(Array(missed_values)).to_hash_without_nils)
           end
           hits
         else
@@ -40,6 +40,7 @@ module Cash
       end
 
       def add(key, value, options = {})
+        # weplay suggests: if repository.add(cache_key(key), value, options[:ttl] || 0, options[:raw]) == "NOT_STORED\r\n"
         unless repository.add(cache_key(key), value, options[:ttl] || 0, options[:raw])
           yield if block_given?
         end
@@ -48,7 +49,7 @@ module Cash
       def set(key, value, options = {})
         repository.set(cache_key(key), value, options[:ttl] || 0, options[:raw])
       end
-
+ 
       def incr(key, delta = 1, ttl = 0)
         repository.incr(cache_key = cache_key(key), delta) || begin
           repository.add(cache_key, (result = yield).to_s, ttl, true) { repository.incr(cache_key) }
