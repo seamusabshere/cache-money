@@ -1,5 +1,19 @@
 ## A real configuration ##
 
+### A note on installing the libmemcached branch as a plugin ###
+
+This worked for me.
+
+From `RAILS_ROOT`
+
+    mkdir vendor/plugins/cache_money
+
+From your git repo
+
+    git archive libmemcached | tar -x -C [RAILS_ROOT]/vendor/plugins/cache_money
+
+### The rest ###
+
 Here's a real config from http://brighterplanet.com. Note that WE USE LIBMEMCACHED with Evan Weaver's gem (so does Twitter).
 
 For `config/preinitializer.rb`
