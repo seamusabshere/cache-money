@@ -28,8 +28,8 @@ require 'cash/util/marshal'
 class ActiveRecord::Base
   def self.is_cached(options = {})
     options.assert_valid_keys(:ttl, :repository, :version)
-    include Cash
-    ::Cash::Config.create(self, options)
+    include Cash unless ancestors.include?(Cash)
+    Cash::Config.create(self, options)
   end
 end
 

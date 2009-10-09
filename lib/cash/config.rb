@@ -1,7 +1,7 @@
 module Cash
   module Config
     def self.create(active_record, options, indices = [])
-      active_record.cache_config = Config.new(active_record, options)
+      active_record.cache_config = Cash::Config::Config.new(active_record, options)
       indices.each { |i| active_record.index i.attributes, i.options }
     end
 
