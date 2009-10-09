@@ -35,8 +35,13 @@ module Cash
         InstanceMethods.unfold(self.class, :expire_caches, self)
       end
 
+      # seamusabshere 10/09/09: Basic support for STI.
       def shallow_clone
-        clone = self.class.new
+        if self.class.descends_from_active_record? and sti_name = read_attribute(self.class.inheritance_column)
+          clone = sti_name.constantize.new
+        else
+          clone = self.class.new
+        end
         clone.instance_variable_set("@attributes", instance_variable_get(:@attributes))
         clone.instance_variable_set("@new_record", new_record?)
         clone

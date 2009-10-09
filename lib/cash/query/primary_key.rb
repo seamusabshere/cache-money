@@ -10,11 +10,14 @@ module Cash
         end
       end
 
+      # seamusabshere 10/09/09: If you're not @expect[ing]_array and your query comes back empty, I bet returning nil is more useful than [].
       def perform
         return [] if @expects_array && @ids.empty?
         raise ActiveRecord::RecordNotFound if @ids.empty?
 
-        super(:conditions => { :id => @ids.first })
+        retval = super(:conditions => { :id => @ids.first })
+        retval = nil if !@expects_array and retval.kind_of?(Array) and retval.empty?
+        retval
       end
 
       def order_matters?

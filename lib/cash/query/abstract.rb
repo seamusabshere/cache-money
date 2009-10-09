@@ -1,7 +1,7 @@
 module Cash
   module Query
     class Abstract
-      delegate :with_exclusive_scope, :get, :table_name, :indices, :find_from_ids_without_cache, :cache_key, :columns_hash, :to => :@active_record
+      delegate :scope, :with_exclusive_scope, :get, :table_name, :indices, :find_from_ids_without_cache, :cache_key, :columns_hash, :to => :@active_record
 
       def self.perform(*args)
         new(*args).perform
@@ -69,10 +69,12 @@ module Cash
         end
       end
 
+      # seamusabshere 10/09/09: Without compact!, this would sometimes bring back [ valid-record, nil, valid-record ], which you probably don't expect.
       def hit_or_miss(cache_keys, index, options)
         misses, missed_keys = nil, nil
         objects = @active_record.get(cache_keys, options.merge(:ttl => index.ttl)) do |missed_keys|
           misses = miss(missed_keys, @options1.merge(:limit => index.window))
+          misses.compact! if misses.is_a?(Array)
           serialize_objects(index, misses)
         end
         [misses, missed_keys, objects]
@@ -124,11 +126,15 @@ module Cash
       end
       alias_method :index_for, :indexed_on?
 
+      # seamusabshere 10/09/09: Before, this method would test for blanks and just return whatever "objects" was.
+      # But if objects was blank, it was most likely {}; chances are you weren't expecting a Hash.
+      # You gotta do it twice because sometimes apply_limits_and_offsets returns a Hash.
       def format_results(cache_keys, objects)
-        return objects if objects.blank?
+        return [] if objects.blank?
 
         objects = convert_to_array(cache_keys, objects)
         objects = apply_limits_and_offsets(objects, @options1)
+        return [] if objects.blank?
         deserialize_objects(objects)
       end
 
@@ -162,9 +168,23 @@ module Cash
         end
       end
 
+      # seamusabshere 10/09/09 so you probably know about the query.order_matters? trick. However...
+      # * If a PrimaryKey query misses, it calls a find_one, which (surprisingly) calls find_every, which creates a plain Select query.
+      # Unfortunately, Select#order_matters? => true, so **we have to preserve the order** even as we discard the rest of the scope.
+      # * Why do we discard the scope? Again, it's the PrimaryKey#miss -> find_one -> find_every -> Select thing.
+      # If we don't discard the scope and you've indexed on something other than :id, for example :slug, then the (degenerate?) Select
+      # query will actually have scope(:find) => { :find => { :conditions => "slug = 'foobar'" } }... which won't match any Index... etc.
+      # * There's probably a better way to do all this, since we're just routing around one strange call to find_every.
       def find_from_keys(*missing_keys)
         missing_ids = Array(missing_keys).flatten.collect { |key| key.split('/')[2].to_i }
-        find_from_ids_without_cache(missing_ids, @options1.except(:conditions))
+        if order = scope(:find).andand[:order]
+          scope_reduced_to_find_order = { :find => { :order => order } }
+        else
+          scope_reduced_to_find_order = {}
+        end
+        with_exclusive_scope(scope_reduced_to_find_order) do
+          find_from_ids_without_cache(missing_ids, @options1.except(:conditions))
+        end
       end
     end
   end
