@@ -48,9 +48,14 @@ module Cash
       end
 
       private
+      # This quasi-recursively calls add/update/etc. down the inheritance chain
+      # No inheritance (normal):                                          Career.send(X), STOP
+      # With inheritance, standard Rails STI:                             ActivatedUser.send(X), User.send(X), STOP
+      # With inheritance, Pratik Naik "set_inheritance_column nil" style: SuspendedVote.send(X), STOP
       def self.unfold(klass, operation, object)
         while klass < ActiveRecord::Base && klass.ancestors.include?(WriteThrough)
           klass.send(operation, object)
+          break unless klass.inheritance_column.present?
           klass = klass.superclass
         end
       end

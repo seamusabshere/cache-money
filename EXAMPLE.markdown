@@ -12,6 +12,12 @@ From your git repo
 
     git archive libmemcached | tar -x -C [RAILS_ROOT]/vendor/plugins/cache_money
 
+### STI and "set_inheritance_column nil" (Pratik Naik)
+
+Our branch should work with both standard Rails STI and Pratik Naik's ActiveRecord inheritance stuff:
+
+http://m.onkey.org/2009/3/24/default-scopes-and-inheritance-to-the-rescue
+
 ### The rest ###
 
 Here's a real config from http://brighterplanet.com. Note that WE USE LIBMEMCACHED with Evan Weaver's gem (so does Twitter).
